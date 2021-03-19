@@ -108,7 +108,7 @@ class Main(commands.Cog):
                 # send dm with role
                 self.game_started = 2
                 # set game lobby to started
-                bot.add_cog(Game(bot,self.players))
+                bot.add_cog(Game(bot,self.players,ctx))
                 # start game cog
 
                 # debugging shit:
@@ -156,10 +156,10 @@ class Game(commands.Cog):
             self.middle_cards.append(role)
         self.roles_copy = self.roles
         '''
-    def __init__(self,bot,players):
+    def __init__(self,bot,players,ctx):
         self.bot=bot
         self.players=players
-        role_list = ["werewolf","werewolf","seer","toublemaker","drunk","insomniac","villager","villager"]
+        role_list = ["werewolf","werewolf","seer","troublemaker","drunk","tanner","villager","villager","insomniac"]
         self.role_list = role_list
         random.shuffle(self.role_list)
         '''
@@ -167,10 +167,51 @@ class Game(commands.Cog):
         self.fut = asyncio.Task(coro, loop = client.loop, name = "kms")
         self.fut.result()
         '''
-        werewolf(bot,players[0],None)
+        x = seer(bot,players[0],players,self.role_list)
+        y = run_and_get(x.doRole())
+        print(y)
+
+        role_func = {"werewolf":werewolf,
+                     "seer":seer,
+                     "troublemaker":troublemaker,
+                     "drunk":drunk,
+                     "insomniac":insomniac,
+                     "villager":villager,
+                     "tanner":tanner}
+
+        playerIterate = players
+        #new_players = players
+        used_roles = sorted(self.role_list[:-3],key = lambda x: role_list.index(x))
+        roles = []
+        self.roles_switched = self.role_list
+        i=0
+        for role in used_roles:
+            player = playerIterate[role_list.index(role)]
+            roles.append(role_func[role](bot,player,players,self.role_list))
+            if role!= "insomniac":
+                switch = run_and_get(roles[-1].doRole())
+            else:
+                run_and_get(roles[-1].doRole(self.roles_switched[i]))
+            if switch != None:
+                x1 = self.roles_switched[switch[0]]
+                self.roles_switched[switch[0]] = self.roles_switched[switch[1]]
+                self.roles_switched[switch[1]] = x1
+                #x2 = roles_switched[switch[1]]
+            playerIterate.remove(player)
+
+        x = dict(zip(players,roles_switched))
+        
+        run_and_get(ctx.send(x))        
+                
+
+        #for switch in switches
+        
+        #run_and_get(
         #bot.add_cog(werewolf(bot,players[0],None))
         #await 
         #self.role_map = zip(self.role_list,self.players))
+
+        
 
 '''
 class aobject(object):
@@ -188,30 +229,32 @@ class aobject(object):
 '''
 
 class base():
-    def __init__(self,bot,player,role):
+    def __init__(self,bot,player,role,players,roles):
         super().__init__()
         self.bot = bot
         self.player = player
+        self.players = players
         self.role = role
-        self.emojis = {1:"<a:one:822414441508896839>",
-                       2:"<a:two:822414519938318358>",
-                       3:"<a:three:822414601550692362>",
-                       4:"<a:four:822414646651781140>",
-                       5:"<a:five:822414681473286144>",
-                       6:"<a:six:822414750960189450>",
-                       7:"<a:seven:822414801291444264>",
-                       8:"<a:eight:822414839384768522>",
-                       9:"<a:nine:822414904732024852>"}
+        self.roles = roles
+        self.emojis = {1:"1⃣",
+                       2:"2⃣",
+                       3:"3⃣",
+                       4:"4⃣",
+                       5:"5⃣",
+                       6:"6⃣",
+                       7:"7⃣",
+                       8:"8⃣",
+                       9:"9⃣"}
         '''
         coro = self.doRole()
         self.fut = asyncio.Task(coro, loop = client.loop, name = "kms")
         self.fut.result()
         '''
-        run_and_get(self.doRole())
+        run_and_get(self.tellRole())
         
 
     async def tellRole(self):
-        await self.player.send("you are the "+role)
+        await self.player.send("you are the "+self.role)
 
     async def doRole(self):
         result = await tellRole()
@@ -222,20 +265,39 @@ class base():
         print(emojis)
         return dict(filter(lambda x: x[0] in list(range(1,num+1)),emojis.items()))
 
-    async def getReaction(self,message,num):
+    async def getReaction(self,message,num,emojiNum):
         this_message = await self.player.send(message)
-        emoji_map = self.getEmojis(num)
+        emoji_map = self.getEmojis(emojiNum)
         emojis = list(emoji_map.values())
         for emoji in emojis:
-            this_message.add_reaction(emoji)
-        reaction = await bot.wait_for_reaction(emoji=emojis,message=message)
-        return emoji_map.keys()[emoji_map.values().index(reaction)] 
+            print(emoji)
+            await this_message.add_reaction(emoji)
+        #reaction = await bot.wait_for_reaction(emoji=emojis,message=message)
+        while True:
+            print(this_message.reactions)
+            this_message = await self.player.fetch_message(this_message.id)
+            reaction = list(filter(lambda x: x.count > 1,this_message.reactions))
+            if len(reaction) > num-1:
+                
+                print("done!")
+                print(reaction[0])
+                break
+        output = list(map(lambda x: list(emoji_map.keys())[(list(emoji_map.values()).index(x.emoji))],reaction))
+        return output #list(emoji_map.keys())[(list(emoji_map.values()).index(reaction[0].emoji))] 
 
 class werewolf(base):
-    def __init__(self,bot,player,otherWerewolf):
-        self.loneWerewolf = otherWerewolf==None
-        self.partner = otherWerewolf
-        super().__init__(bot,player,"werewolf")
+    def __init__(self,bot,player,players,roles):
+        self.loneWerewolf = True
+        '''
+        for i in range(0,len(roles)-3):
+            if roles[i] == "werewolf" and players[i] != player:
+                self.partner = players[i]
+                loneWerewolf = False
+                break
+        '''
+        print(roles)
+        super().__init__(bot,player,"werewolf",players,roles)
+        
 
     async def tellRole(self):
         if self.loneWerewolf:
@@ -246,11 +308,118 @@ class werewolf(base):
     async def doRole(self):
         if self.loneWerewolf:
             #emojis = [
-            x = await self.getReaction("please choose a card from the centre to view",3)    
+            x = await self.getReaction("please choose a card from the centre to view",1,3)    
+            
+            await self.player.send("the card at this position is"+self.roles[-3:][x-1])
+        else:
+            await self.player.send("the other werewolf is: "+self.partner)
 
+class seer(base):
+    def __init__(self,bot,player,players,roles):
+        super().__init__(bot,player,"seer",players,roles)
+
+    async def doRole(self):
+        x = await self.getReaction("look at another players card :one: or look at a card from the centre :two:?",1,2)
+        if x[0] == 1:
+            message = "choose a player to look at the card of:"
+            i = 0
+            for player in self.players:
+                i+=1
+                if player != self.player:
+                    message += "\n{0} {1}".format(self.emojis[i],player)
+            num = await self.getReaction(message,1,len(self.players)-1)
+            await self.player.send("this player is a "+self.roles[i-1])
+        else:
+            x = await self.getReaction("please choose 2 cards to look at from the centre",2,3)
+            await self.player.send("{0}:{1}".format(x[0],self.roles[-3:][x[0]-1]))
+            await self.player.send("{0}:{1}".format(x[1],self.roles[-3:][x[1]-1]))
+            print(self.roles)
+            '''
+            this_message = await self.player.send("please choose 2 cards to look at from the centre")
+            emoji_map = self.getEmojis(3)
+            emojis = list(emoji_map.values())
+            for emoji in emojis:
+                print(emoji)
+                await this_message.add_reaction(emoji)
+            #reaction = await bot.wait_for_reaction(emoji=emojis,message=message)
+            while True:
+                print(this_message.reactions)
+                this_message = await self.player.fetch_message(this_message.id)
+                reaction = list(filter(lambda x: x.count > 1,this_message.reactions))
+                if len(reaction) >1:
+                    print("done!")
+                    print(reaction[0])
+                    break
+            
+            thing1 = list(emoji_map.keys())[(list(emoji_map.values()).index(reaction[0].emoji))]
+            thing2 = list(emoji_map.keys())[(list(emoji_map.values()).index(reaction[1].emoji))]
+            print(self.roles)
+            await self.player.send("{0}:{1}".format(thing1,self.roles[-3:][thing1-1]))
+            await self.player.send("{0}:{1}".format(thing2,self.roles[-3:][thing2-1]))
+            '''
+class robber(base):
+    def __init__(self,bot,player,players,roles):
+        super().__init__(bot,player,"robber",players,roles)
+    async def doRole(self):
+        message = "please choose a person to steal the card of"
         
-                
+        for player in self.players:
+            i+=1
+            if player != self.player:
+                message += "\n{0} {1}".format(self.emojis[i],player)
+        x = self.getReaction(message,1,len(self.players)-1)
+        await self.player.send("you are now the "+self.roles[x[1]-1])
+        x.append(self.players.index(self.player)+1)
+        return x
+
+class troublemaker(base):
+    def __init__(self,bot,player,players,roles):
+        super().__init__(bot,player,"troublemaker",players,roles)
+
+    async def doRole(self):
+        message = "please choose two cards to swap from the list of players below"
         
+        for player in self.players:
+            i+=1
+            if player != self.player:
+                message += "\n{0} {1}".format(self.emojis[i],player)
+        x = await self.getReaction(message,2,len(self.players)-1)
+        return x
+
+class drunk(base):
+    def __init__(self,bot,player,players,roles):
+        super().__init__(bot,player,"drunk",players,roles)
+
+    async def doRole(self):
+        message = "please select a card in the middle to swap with your own"
+        i=0
+        for player in self.players:
+            i+=1
+            if player != self.player:
+                message += "\n{0} {1}".format(self.emojis[i],player)
+        x = await self.getReaction(message,2,len(self.players)-1)
+        return x
+
+class insomniac(base):
+    def __init__(self,bot,player,players,roles):
+        super().__init__(bot,player,"insomniac",players,roles)
+
+    async def doRole(self,new_role):
+        await self.player.send("you have woken up as the "+new_role)
+
+class villager(base):
+    def __init__(self,bot,player,players,roles):
+        super().__init__(bot,player,"villager",players,roles)
+
+    async def doRole(base):
+        await self.player.send("you have slept a long relaxing sleep and wake up refreshed and ready for the day")
+
+class tanner(base):
+    def __init__(self,bot,player,players,roles):
+        super().__init__(bot,player,"tanner",players,roles)
+
+    async def doRole(base):
+        await self.player.send("you have slept a long relaxing sleep and wake up refreshed and ready for the day")
     #def werewolf(num):
 bot.add_cog(Main(bot))
 #client.run(TOKEN)
